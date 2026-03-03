@@ -37,7 +37,7 @@ class MachineAnalyzer:
                 "message": f"{machine_id} overheating"
             })
 
-        if machine.get("vibration_index", 0) > 0.9:
+        if machine.get("vibration_index", 0) > 1.15:
             alerts.append({
                 "level": "WARNING",
                 "message": f"{machine_id} vibration increasing"
