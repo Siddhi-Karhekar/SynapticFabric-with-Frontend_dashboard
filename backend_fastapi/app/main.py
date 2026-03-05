@@ -1,5 +1,5 @@
 # ==========================================
-# SYNAPTICFABRIC — FASTAPI BACKEND (FINAL FIX)
+# SYNAPTICFABRIC — FASTAPI BACKEND
 # ==========================================
 
 from fastapi import FastAPI, WebSocket
@@ -8,28 +8,15 @@ from fastapi.responses import StreamingResponse
 
 import asyncio
 import json
-import math
 
-# ------------------------------------------
-# INTERNAL MODULE IMPORTS
-# ------------------------------------------
-
-from digital_twin.simulator import run_digital_twin
+from digital_twin.simulator import run_digital_twin, MACHINE_MEMORY
 from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer
 from backend_fastapi.ai_engine.context_store import LATEST_PLANT_CONTEXT
 from rag_assistant.rag_chain import generate_answer
 
 
-# ==========================================
-# APP INIT
-# ==========================================
-
 app = FastAPI(title="SynapticFabric API")
 
-
-# ==========================================
-# SAFE JSON SERIALIZER
-# ==========================================
 
 def json_safe(data):
     return json.loads(json.dumps(data, default=str))
@@ -59,6 +46,7 @@ def root():
 
 @app.get("/twin-status")
 def twin_status():
+
     machines = run_digital_twin()
     analyzed = machine_analyzer.analyze_machines(machines)
 
@@ -76,34 +64,44 @@ def plant_context():
 
 
 # ==========================================
-# ✅ WEBSOCKET — FINAL STABLE VERSION
+# MAINTENANCE ENDPOINT
+# ==========================================
+
+@app.post("/maintenance/{machine_id}")
+def perform_maintenance(machine_id: str):
+
+    if machine_id in MACHINE_MEMORY:
+
+        MACHINE_MEMORY[machine_id]["tool_wear"] *= 0.3
+        MACHINE_MEMORY[machine_id]["vibration_index"] *= 0.4
+        MACHINE_MEMORY[machine_id]["anomaly_score"] *= 0.2
+
+        return {"status": f"{machine_id} maintenance complete"}
+
+    return {"error": "machine not found"}
+
+
+# ==========================================
+# WEBSOCKET STREAM
 # ==========================================
 
 @app.websocket("/ws/machines")
 async def machine_stream(ws: WebSocket):
-    await ws.accept()
 
+    await ws.accept()
     print("✅ WebSocket connected")
 
     try:
         while True:
 
-            # 1️⃣ Generate twin
             machines = run_digital_twin()
+            analyzed = machine_analyzer.analyze_machines(machines)
 
-            # 2️⃣ Run AI analyzer
-            analyzed_machines = machine_analyzer.analyze_machines(machines)
-
-            # ✅ 3️⃣ HARD FILTER (CRITICAL FIX)
             valid = [
-                m for m in analyzed_machines
-                if isinstance(m, dict)
-                and m.get("machine_id") is not None
+                m for m in analyzed
+                if isinstance(m, dict) and m.get("machine_id")
             ]
 
-            print("Sending machines:", valid)
-
-            # 4️⃣ Send ONLY valid machines
             await ws.send_json(json_safe(valid))
 
             await asyncio.sleep(1)
@@ -120,6 +118,7 @@ async def machine_stream(ws: WebSocket):
 async def chat_stream(query: str):
 
     async def stream():
+
         answer = generate_answer(query)
 
         for word in answer.split():

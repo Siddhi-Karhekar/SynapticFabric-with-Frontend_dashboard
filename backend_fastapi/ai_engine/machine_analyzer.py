@@ -31,13 +31,13 @@ class MachineAnalyzer:
         alerts = []
         machine_id = machine.get("machine_id", "unknown")
 
-        if machine.get("temperature", 0) > 315:
+        if machine.get("temperature", 0) > 305:
             alerts.append({
                 "level": "HIGH",
                 "message": f"{machine_id} overheating"
             })
 
-        if machine.get("vibration_index", 0) > 1.15:
+        if machine.get("vibration_index", 0) > 0.9:
             alerts.append({
                 "level": "WARNING",
                 "message": f"{machine_id} vibration increasing"
