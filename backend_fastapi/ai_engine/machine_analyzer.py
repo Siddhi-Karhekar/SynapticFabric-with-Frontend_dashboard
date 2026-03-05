@@ -46,6 +46,36 @@ class MachineAnalyzer:
         return alerts
 
     # ---------------------------------
+    # PREDICTIVE MAINTENANCE
+    # ---------------------------------
+    def estimate_rul(self, machine: Dict):
+
+        wear = machine.get("tool_wear", 0)
+        vibration = machine.get("vibration_index", 0)
+        temperature = machine.get("temperature", 0)
+
+        wear_factor = wear
+        vibration_factor = max(0, (vibration - 0.5) / 1.0)
+        temp_factor = max(0, (temperature - 300) / 30)
+
+        risk_score = (
+            wear_factor * 0.5 +
+            vibration_factor * 0.3 +
+            temp_factor * 0.2
+        )
+
+        risk_score = min(max(risk_score, 0), 1)
+
+        rul_hours = int((1 - risk_score) * 200)
+
+        failure_probability = round(risk_score * 100, 1)
+
+        return {
+            "rul_hours": rul_hours,
+            "failure_probability": failure_probability
+        }
+
+    # ---------------------------------
     # PLANT SUMMARY
     # ---------------------------------
     def generate_plant_summary(self, machines):
@@ -71,7 +101,6 @@ class MachineAnalyzer:
 
         for machine in machines:
 
-            # 🚨 HARD SCHEMA GUARD
             if not isinstance(machine, dict):
                 continue
 
@@ -80,6 +109,9 @@ class MachineAnalyzer:
 
             # health
             machine["health_status"] = self.compute_health_status(machine)
+
+            # prediction
+            machine["prediction"] = self.estimate_rul(machine)
 
             # alerts
             alerts = self.detect_alerts(machine)
@@ -92,7 +124,6 @@ class MachineAnalyzer:
 
             analyzed.append(machine)
 
-        # update context memory
         summary = self.generate_plant_summary(analyzed)
         self.update_context_cache(analyzed, all_alerts, summary)
 
@@ -115,5 +146,4 @@ class MachineAnalyzer:
         ]
 
 
-# ✅ singleton instance
 machine_analyzer = MachineAnalyzer()
