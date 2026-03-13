@@ -14,14 +14,15 @@ class MachineAnalyzer:
     # ---------------------------------
     # HEALTH STATUS
     # ---------------------------------
-    def compute_health_status(self, machine: Dict) -> str:
+    def compute_health_status(self, machine):
 
         anomaly = machine.get("anomaly_score", 0)
 
-        if anomaly < 0.3:
+        # Wider warning region
+        if anomaly < 0.45:
             return "healthy"
 
-        elif anomaly < 0.7:
+        elif anomaly < 0.9:
             return "warning"
 
         return "critical"
@@ -29,7 +30,7 @@ class MachineAnalyzer:
     # ---------------------------------
     # ALERT DETECTION
     # ---------------------------------
-    def detect_alerts(self, machine: Dict):
+    def detect_alerts(self, machine):
 
         alerts = []
         machine_id = machine.get("machine_id", "unknown")
@@ -40,10 +41,16 @@ class MachineAnalyzer:
                 "message": f"{machine_id} overheating"
             })
 
-        if machine.get("vibration_index", 0) > 0.9:
+        if machine.get("vibration_index", 0) > 1:
             alerts.append({
                 "level": "WARNING",
                 "message": f"{machine_id} vibration increasing"
+            })
+
+        if machine["prediction"]["failure_probability"] > 70:
+            alerts.append({
+                "level": "CRITICAL",
+                "message": f"{machine_id} failure risk high"
             })
 
         return alerts
@@ -61,10 +68,11 @@ class MachineAnalyzer:
         vibration_factor = max(0, (vibration - 0.5) / 1.0)
         temp_factor = max(0, (temperature - 300) / 30)
 
+        # Balanced weighting
         risk_score = (
-            wear_factor * 0.5 +
-            vibration_factor * 0.3 +
-            temp_factor * 0.2
+            wear_factor * 0.4 +
+            vibration_factor * 0.35 +
+            temp_factor * 0.25
         )
 
         risk_score = min(max(risk_score, 0), 1)
@@ -109,18 +117,14 @@ class MachineAnalyzer:
             if "machine_id" not in machine:
                 continue
 
-            # HEALTH
             machine["health_status"] = self.compute_health_status(machine)
 
-            # PREDICTION
             prediction = self.estimate_rul(machine)
             machine["prediction"] = prediction
 
             failure_risk = prediction["failure_probability"]
 
-            # ---------------------------------
-            # AUTONOMOUS AI MAINTENANCE
-            # ---------------------------------
+            # Autonomous maintenance
             if failure_risk > 75:
 
                 machine_id = machine["machine_id"]
@@ -131,16 +135,17 @@ class MachineAnalyzer:
                 machine["anomaly_score"] *= 0.2
 
                 machine["health_status"] = self.compute_health_status(machine)
+
+                prediction = self.estimate_rul(machine)
+                machine["prediction"] = prediction
+
                 machine["ai_action"] = "Autonomous maintenance executed"
 
-            # ALERTS
             alerts = self.detect_alerts(machine)
             machine["alerts"] = alerts
             all_alerts.extend(alerts)
 
-            # AI EXPLANATION
-            machine["ai_explanation"] = \
-                explanation_engine.generate_explanation(machine)
+            machine["ai_explanation"] = explanation_engine.generate_explanation(machine)
 
             analyzed.append(machine)
 
@@ -154,9 +159,7 @@ class MachineAnalyzer:
     # ---------------------------------
     def update_context_cache(self, machines, alerts, summary):
 
-        LATEST_PLANT_CONTEXT["timestamp"] = \
-            datetime.utcnow().isoformat()
-
+        LATEST_PLANT_CONTEXT["timestamp"] = datetime.utcnow().isoformat()
         LATEST_PLANT_CONTEXT["machines"] = machines
         LATEST_PLANT_CONTEXT["alerts"] = alerts
         LATEST_PLANT_CONTEXT["plant_summary"] = summary
@@ -166,5 +169,4 @@ class MachineAnalyzer:
         ]
 
 
-# Singleton instance
 machine_analyzer = MachineAnalyzer()
