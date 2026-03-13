@@ -1,5 +1,5 @@
 # ==========================================================
-# MACHINE INTELLIGENCE ENGINE (STABLE)
+# MACHINE INTELLIGENCE ENGINE
 # ==========================================================
 
 from datetime import datetime
@@ -15,16 +15,19 @@ class MachineAnalyzer:
     # HEALTH STATUS
     # ---------------------------------
     def compute_health_status(self, machine: Dict) -> str:
+
         anomaly = machine.get("anomaly_score", 0)
 
         if anomaly < 0.3:
             return "healthy"
-        elif anomaly < 0.65:
+
+        elif anomaly < 0.7:
             return "warning"
+
         return "critical"
 
     # ---------------------------------
-    # ALERTS
+    # ALERT DETECTION
     # ---------------------------------
     def detect_alerts(self, machine: Dict):
 
@@ -67,7 +70,6 @@ class MachineAnalyzer:
         risk_score = min(max(risk_score, 0), 1)
 
         rul_hours = int((1 - risk_score) * 200)
-
         failure_probability = round(risk_score * 100, 1)
 
         return {
@@ -107,18 +109,36 @@ class MachineAnalyzer:
             if "machine_id" not in machine:
                 continue
 
-            # health
+            # HEALTH
             machine["health_status"] = self.compute_health_status(machine)
 
-            # prediction
-            machine["prediction"] = self.estimate_rul(machine)
+            # PREDICTION
+            prediction = self.estimate_rul(machine)
+            machine["prediction"] = prediction
 
-            # alerts
+            failure_risk = prediction["failure_probability"]
+
+            # ---------------------------------
+            # AUTONOMOUS AI MAINTENANCE
+            # ---------------------------------
+            if failure_risk > 75:
+
+                machine_id = machine["machine_id"]
+                print(f"🤖 AI triggered maintenance on {machine_id}")
+
+                machine["tool_wear"] *= 0.3
+                machine["vibration_index"] *= 0.4
+                machine["anomaly_score"] *= 0.2
+
+                machine["health_status"] = self.compute_health_status(machine)
+                machine["ai_action"] = "Autonomous maintenance executed"
+
+            # ALERTS
             alerts = self.detect_alerts(machine)
             machine["alerts"] = alerts
             all_alerts.extend(alerts)
 
-            # explanation
+            # AI EXPLANATION
             machine["ai_explanation"] = \
                 explanation_engine.generate_explanation(machine)
 
@@ -146,4 +166,5 @@ class MachineAnalyzer:
         ]
 
 
+# Singleton instance
 machine_analyzer = MachineAnalyzer()
