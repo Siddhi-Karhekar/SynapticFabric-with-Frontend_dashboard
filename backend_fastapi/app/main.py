@@ -9,9 +9,9 @@ from fastapi.responses import StreamingResponse
 import asyncio
 import json
 
-# ------------------------------------------
+# ==========================================
 # INTERNAL MODULE IMPORTS
-# ------------------------------------------
+# ==========================================
 
 from digital_twin.simulator import run_digital_twin
 from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer
@@ -19,16 +19,20 @@ from backend_fastapi.ai_engine.context_store import LATEST_PLANT_CONTEXT
 from rag_assistant.rag_chain import generate_answer
 
 # DATABASE
-from backend_fastapi.database.database import engine
-from backend_fastapi.database.models import Base
+from backend_fastapi.database.database import engine, SessionLocal
+from backend_fastapi.database.models import Base, MachineLog
 from backend_fastapi.database.logger import log_machine_state
-from backend_fastapi.database.database import SessionLocal
-from backend_fastapi.database.models import MachineLog
+
+# ANALYTICS
+from backend_fastapi.analytics.analytics_router import router as analytics_router 
 # ==========================================
 # FASTAPI APP
 # ==========================================
 
 app = FastAPI(title="SynapticFabric API")
+
+# include analytics router
+app.include_router(analytics_router)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
