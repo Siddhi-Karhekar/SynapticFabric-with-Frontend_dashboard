@@ -24,7 +24,10 @@ from backend_fastapi.database.models import Base, MachineLog
 from backend_fastapi.database.logger import log_machine_state
 
 # ANALYTICS
-from backend_fastapi.analytics.analytics_router import router as analytics_router 
+from backend_fastapi.analytics.analytics_router import router as analytics_router
+from backend_fastapi.analytics.realtime_analytics import compute_realtime_analytics
+
+
 # ==========================================
 # FASTAPI APP
 # ==========================================
@@ -132,8 +135,17 @@ async def machine_stream(ws: WebSocket):
                 and m.get("machine_id") is not None
             ]
 
-            # 5️⃣ SEND TO FRONTEND
-            await ws.send_json(json_safe(valid))
+            # 5️⃣ COMPUTE REALTIME ANALYTICS
+            analytics = compute_realtime_analytics(valid)
+
+            # 6️⃣ CREATE PAYLOAD
+            payload = {
+                "machines": valid,
+                "factory_analytics": analytics
+            }
+
+            # 7️⃣ SEND TO FRONTEND
+            await ws.send_json(json_safe(payload))
 
             await asyncio.sleep(1)
 
@@ -178,6 +190,7 @@ async def chat_stream(query: str):
 
     return StreamingResponse(stream(), media_type="text/plain")
 
+
 # ==========================================
 # MACHINE HISTORY API
 # ==========================================
@@ -202,7 +215,6 @@ def machine_history(machine_id: str, limit: int = 100):
         for r in records:
 
             history.append({
-
                 "timestamp": r.timestamp,
                 "machine_id": r.machine_id,
                 "temperature": r.temperature,
@@ -212,11 +224,9 @@ def machine_history(machine_id: str, limit: int = 100):
                 "anomaly_score": r.anomaly_score,
                 "health_status": r.health_status,
                 "failure_probability": r.failure_probability
-
             })
 
         return history
 
     finally:
-
         db.close()
