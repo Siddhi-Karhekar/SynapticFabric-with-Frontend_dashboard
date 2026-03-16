@@ -1,172 +1,119 @@
-# ==========================================================
-# MACHINE INTELLIGENCE ENGINE
-# ==========================================================
-
-from datetime import datetime
-from typing import List, Dict
-
-from backend_fastapi.ai_engine.explanation_engine import explanation_engine
-from backend_fastapi.ai_engine.context_store import LATEST_PLANT_CONTEXT
+import random
+from backend_fastapi.ai_engine.root_cause import analyze_root_cause
 
 
 class MachineAnalyzer:
 
-    # ---------------------------------
-    # HEALTH STATUS
-    # ---------------------------------
-    def compute_health_status(self, machine):
+    def __init__(self):
+        pass
 
-        anomaly = machine.get("anomaly_score", 0)
-
-        # Wider warning region
-        if anomaly < 0.45:
-            return "healthy"
-
-        elif anomaly < 0.9:
-            return "warning"
-
-        return "critical"
-
-    # ---------------------------------
-    # ALERT DETECTION
-    # ---------------------------------
-    def detect_alerts(self, machine):
-
-        alerts = []
-        machine_id = machine.get("machine_id", "unknown")
-
-        if machine.get("temperature", 0) > 305:
-            alerts.append({
-                "level": "HIGH",
-                "message": f"{machine_id} overheating"
-            })
-
-        if machine.get("vibration_index", 0) > 1:
-            alerts.append({
-                "level": "WARNING",
-                "message": f"{machine_id} vibration increasing"
-            })
-
-        if machine["prediction"]["failure_probability"] > 70:
-            alerts.append({
-                "level": "CRITICAL",
-                "message": f"{machine_id} failure risk high"
-            })
-
-        return alerts
-
-    # ---------------------------------
-    # PREDICTIVE MAINTENANCE
-    # ---------------------------------
-    def estimate_rul(self, machine: Dict):
-
-        wear = machine.get("tool_wear", 0)
-        vibration = machine.get("vibration_index", 0)
-        temperature = machine.get("temperature", 0)
-
-        wear_factor = wear
-        vibration_factor = max(0, (vibration - 0.5) / 1.0)
-        temp_factor = max(0, (temperature - 300) / 30)
-
-        # Balanced weighting
-        risk_score = (
-            wear_factor * 0.4 +
-            vibration_factor * 0.35 +
-            temp_factor * 0.25
-        )
-
-        risk_score = min(max(risk_score, 0), 1)
-
-        rul_hours = int((1 - risk_score) * 200)
-        failure_probability = round(risk_score * 100, 1)
-
-        return {
-            "rul_hours": rul_hours,
-            "failure_probability": failure_probability
-        }
-
-    # ---------------------------------
-    # PLANT SUMMARY
-    # ---------------------------------
-    def generate_plant_summary(self, machines):
-
-        total = len(machines)
-
-        healthy = sum(m["health_status"] == "healthy" for m in machines)
-        warning = sum(m["health_status"] == "warning" for m in machines)
-        critical = sum(m["health_status"] == "critical" for m in machines)
-
-        return (
-            f"Plant Status: {healthy}/{total} healthy, "
-            f"{warning} warning, {critical} critical."
-        )
-
-    # ---------------------------------
-    # MAIN ANALYSIS PIPELINE
-    # ---------------------------------
-    def analyze_machines(self, machines: List[Dict]):
+    def analyze_machines(self, machines):
 
         analyzed = []
-        all_alerts = []
 
         for machine in machines:
 
-            if not isinstance(machine, dict):
-                continue
+            # =====================================
+            # EXTRACT SENSOR VALUES
+            # =====================================
 
-            if "machine_id" not in machine:
-                continue
+            temperature = machine.get("temperature", 0)
+            torque = machine.get("torque", 0)
+            tool_wear = machine.get("tool_wear", 0)
+            vibration = machine.get("vibration_index", 0)
 
-            machine["health_status"] = self.compute_health_status(machine)
+            # =====================================
+            # ANOMALY SCORE
+            # =====================================
 
-            prediction = self.estimate_rul(machine)
-            machine["prediction"] = prediction
+            anomaly_score = (
+                (temperature / 120) * 0.3 +
+                (torque / 120) * 0.25 +
+                (tool_wear / 100) * 0.25 +
+                vibration * 0.2
+            )
 
-            failure_risk = prediction["failure_probability"]
+            anomaly_score = round(min(anomaly_score, 1), 3)
 
-            # Autonomous maintenance
-            if failure_risk > 75:
+            machine["anomaly_score"] = anomaly_score
 
-                machine_id = machine["machine_id"]
-                print(f"🤖 AI triggered maintenance on {machine_id}")
+            # =====================================
+            # FAILURE PROBABILITY
+            # =====================================
 
-                machine["tool_wear"] *= 0.3
-                machine["vibration_index"] *= 0.4
-                machine["anomaly_score"] *= 0.2
+            failure_probability = round(
+                anomaly_score * random.uniform(0.7, 1.1), 3
+            )
 
-                machine["health_status"] = self.compute_health_status(machine)
+            machine["failure_probability"] = min(failure_probability, 1)
 
-                prediction = self.estimate_rul(machine)
-                machine["prediction"] = prediction
+            # 🔧 FIX FOR WEBSOCKET CRASH
+            machine["prediction"] = machine["failure_probability"]
 
-                machine["ai_action"] = "Autonomous maintenance executed"
+            # =====================================
+            # HEALTH STATUS
+            # =====================================
 
-            alerts = self.detect_alerts(machine)
+            if anomaly_score < 0.35:
+                health_status = "Healthy"
+            elif anomaly_score < 0.6:
+                health_status = "Warning"
+            else:
+                health_status = "Critical"
+
+            machine["health_status"] = health_status
+
+            # =====================================
+            # AI ALERTS
+            # =====================================
+
+            alerts = []
+
+            if temperature > 85:
+                alerts.append({
+                    "level": "warning",
+                    "message": "High temperature detected"
+                })
+
+            if vibration > 0.7:
+                alerts.append({
+                    "level": "warning",
+                    "message": "High vibration levels"
+                })
+
+            if tool_wear > 80:
+                alerts.append({
+                    "level": "critical",
+                    "message": "Tool wear extremely high"
+                })
+
+            if anomaly_score > 0.6:
+                alerts.append({
+                    "level": "critical",
+                    "message": "Machine health critical"
+                })
+
             machine["alerts"] = alerts
-            all_alerts.extend(alerts)
 
-            machine["ai_explanation"] = explanation_engine.generate_explanation(machine)
+            # =====================================
+            # AI EXPLANATION
+            # =====================================
+
+            machine["ai_explanation"] = (
+                f"Machine health classified as {health_status}. "
+                f"Anomaly score {anomaly_score} with failure probability "
+                f"{machine['failure_probability']}."
+            )
+
+            # =====================================
+            # ROOT CAUSE ANALYSIS
+            # =====================================
+
+            machine["root_cause"] = analyze_root_cause(machine)
 
             analyzed.append(machine)
 
-        summary = self.generate_plant_summary(analyzed)
-        self.update_context_cache(analyzed, all_alerts, summary)
-
         return analyzed
-
-    # ---------------------------------
-    # CONTEXT MEMORY UPDATE
-    # ---------------------------------
-    def update_context_cache(self, machines, alerts, summary):
-
-        LATEST_PLANT_CONTEXT["timestamp"] = datetime.utcnow().isoformat()
-        LATEST_PLANT_CONTEXT["machines"] = machines
-        LATEST_PLANT_CONTEXT["alerts"] = alerts
-        LATEST_PLANT_CONTEXT["plant_summary"] = summary
-
-        LATEST_PLANT_CONTEXT["explanations"] = [
-            m["ai_explanation"] for m in machines
-        ]
 
 
 machine_analyzer = MachineAnalyzer()

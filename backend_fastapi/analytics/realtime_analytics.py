@@ -1,29 +1,35 @@
-from statistics import mean
-
-
 def compute_realtime_analytics(machines):
 
     if not machines:
         return {}
 
-    failure_probs = [m.get("failure_probability", 0) for m in machines]
-    vibrations = [m.get("vibration_index", 0) for m in machines]
+    total = len(machines)
 
-    plant_health = 1 - mean(failure_probs)
+    # Plant health score
+    avg_health = 0
+    unstable_machine = None
+    highest_anomaly = -1
 
-    most_unstable = max(
-        machines,
-        key=lambda m: m.get("vibration_index", 0)
-    )
+    machines_needing_attention = []
 
-    machines_needing_attention = [
-        m["machine_id"]
-        for m in machines
-        if m.get("failure_probability", 0) > 0.6
-    ]
+    for m in machines:
+
+        anomaly = m.get("anomaly_score", 0)
+
+        avg_health += (1 - anomaly)
+
+        if anomaly > highest_anomaly:
+            highest_anomaly = anomaly
+            unstable_machine = m.get("machine_id")
+
+        if anomaly > 0.6:
+            machines_needing_attention.append(m.get("machine_id"))
+
+    plant_health_score = round((avg_health / total) * 100, 2)
 
     return {
-        "plant_health_score": round(plant_health, 3),
-        "most_unstable_machine": most_unstable["machine_id"],
+        "plant_health_score": plant_health_score,
+        "most_unstable_machine": unstable_machine,
+        "total_machines": total,
         "machines_needing_attention": machines_needing_attention
     }

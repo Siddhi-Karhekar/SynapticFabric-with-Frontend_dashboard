@@ -24,7 +24,7 @@ def log_machine_state(machine):
 
             health_status=machine["health_status"],
 
-            failure_probability=machine["prediction"]["failure_probability"]
+            failure_probability = machine.get("failure_probability", 0)
 
         )
 
