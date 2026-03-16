@@ -75,28 +75,56 @@ class MachineAnalyzer:
 
             alerts = []
 
-            if temperature > 305:
+            # Temperature alerts
+            if temperature > 300:
                 alerts.append({
                     "level": "warning",
-                    "message": "High temperature detected"
+                    "message": "Temperature rising above normal"
+                })
+
+            if temperature > 304:
+                alerts.append({
+                    "level": "critical",
+                    "message": "Machine overheating risk"
+                })
+
+            # Vibration alerts
+            if vibration > 0.45:
+                alerts.append({
+                    "level": "warning",
+                    "message": "Vibration levels increasing"
                 })
 
             if vibration > 0.8:
                 alerts.append({
+                    "level": "critical",
+                    "message": "Severe vibration detected"
+                })
+
+            # Tool wear alerts
+            if tool_wear > 0.35:
+                alerts.append({
                     "level": "warning",
-                    "message": "High vibration levels"
+                    "message": "Tool wear approaching limit"
                 })
 
-            if tool_wear > 0.8:
+            if tool_wear > 0.7:
                 alerts.append({
                     "level": "critical",
-                    "message": "Tool wear extremely high"
+                    "message": "Tool wear near failure"
                 })
 
-            if anomaly_score > 0.65:
+            # AI health alerts
+            if anomaly_score > 0.45:
+                alerts.append({
+                    "level": "warning",
+                    "message": "Machine health degrading"
+                })
+
+            if anomaly_score > 0.75:
                 alerts.append({
                     "level": "critical",
-                    "message": "Machine health critical"
+                    "message": "Machine failure risk high"
                 })
 
             machine["alerts"] = alerts
