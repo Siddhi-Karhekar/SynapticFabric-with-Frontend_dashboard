@@ -74,6 +74,11 @@ RUL ESTIMATION:
 # ==========================================================
 # 🔍 NEW INSPECT ENDPOINT (SAFE ADDITION)
 # ==========================================================
+# ADD / REPLACE THIS PART
+
+
+
+
 @router.post("/inspect")
 def inspect_machine(payload: dict = Body(...)):
 
@@ -87,10 +92,9 @@ def inspect_machine(payload: dict = Body(...)):
 
     machine = MACHINE_MEMORY[machine_id]
 
-    # 🔥 root cause analysis
-    causes = analyze_root_cause(machine)
+    diagnosis = analyze_root_cause(machine)
 
     return {
         "machine_id": machine_id,
-        "causes": causes
+        "diagnosis": diagnosis
     }

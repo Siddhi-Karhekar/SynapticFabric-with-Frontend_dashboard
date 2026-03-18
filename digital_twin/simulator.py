@@ -1,63 +1,139 @@
+# digital_twin/simulator.py
+
 import random
 
 # ==========================================
-# MACHINE MEMORY
+# MACHINE MEMORY (STATEFUL)
 # ==========================================
 
 MACHINE_MEMORY = {
-    "M_1": {"tool_wear": 0.2, "vibration_index": 0.4, "anomaly_score": 0.05},
-    "M_2": {"tool_wear": 0.2, "vibration_index": 0.4, "anomaly_score": 0.05},
-    "M_3": {"tool_wear": 0.2, "vibration_index": 0.4, "anomaly_score": 0.05},
+    "M_1": {
+        "tool_wear": 0.15,
+        "vibration_index": 0.25,
+        "temperature": 295,
+        "torque": 40
+    },
+    "M_2": {
+        "tool_wear": 0.10,
+        "vibration_index": 0.20,
+        "temperature": 295,
+        "torque": 40
+    },
+    "M_3": {
+        "tool_wear": 0.12,
+        "vibration_index": 0.18,
+        "temperature": 295,
+        "torque": 42
+    },
 }
 
 
 # ==========================================
-# DIGITAL TWIN SIMULATOR
+# HELPER FUNCTIONS
+# ==========================================
+
+def clamp(val, min_val, max_val):
+    return max(min_val, min(val, max_val))
+
+
+# ==========================================
+# MAIN DIGITAL TWIN
 # ==========================================
 
 def run_digital_twin():
 
     machines = []
 
-    for machine_id in MACHINE_MEMORY:
+    for machine_id, state in MACHINE_MEMORY.items():
 
-        state = MACHINE_MEMORY[machine_id]
+        # ======================================
+        # 🔵 BASE SLOW DEGRADATION (REALISTIC)
+        # ======================================
+        state["tool_wear"] += random.uniform(0.0005, 0.002)
+        state["vibration_index"] += random.uniform(0.0003, 0.001)
 
-        # -------------------------------
-        # GRADUAL DEGRADATION
-        # -------------------------------
+        # ======================================
+        # 🧠 MACHINE-SPECIFIC BEHAVIOR
+        # ======================================
 
-        state["tool_wear"] += random.uniform(0.001, 0.003)
-        state["vibration_index"] += random.uniform(0.001, 0.003)
-        state["anomaly_score"] += random.uniform(0.001, 0.003)
+        # 🔵 CNC MILLING (M1)
+        if machine_id == "M_1":
+            # Higher vibration system
+            state["vibration_index"] += random.uniform(0.001, 0.003)
 
-        # -------------------------------
-        # CLAMP VALUES
-        # -------------------------------
+            # Wear depends on vibration
+            state["tool_wear"] += state["vibration_index"] * 0.002
 
-        state["tool_wear"] = max(0, min(state["tool_wear"], 1))
-        state["vibration_index"] = max(0, min(state["vibration_index"], 1.5))
-        state["anomaly_score"] = max(0, min(state["anomaly_score"], 1))
+            # Occasional instability spike
+            if random.random() < 0.02:
+                state["vibration_index"] += random.uniform(0.02, 0.05)
 
-        # -------------------------------
-        # SENSOR SIMULATION
-        # -------------------------------
+        # 🟡 CNC DRILLING (M2)
+        elif machine_id == "M_2":
+            # Heat accumulates slowly
+            state["temperature"] += random.uniform(0.05, 0.15)
 
-        temperature = 295 + state["vibration_index"] * 10 + random.uniform(-1, 1)
+            # Cooling effect (stabilization)
+            if state["temperature"] > 305:
+                state["temperature"] -= random.uniform(0.1, 0.3)
 
-        torque = random.uniform(38, 48)
+            # Wear slower but steady
+            state["tool_wear"] += 0.0008
 
-        # -------------------------------
-        # MACHINE OUTPUT
-        # -------------------------------
+        # 🟢 CNC LATHE (M3)
+        elif machine_id == "M_3":
+            # Torque-driven system
+            state["torque"] = 40 + state["tool_wear"] * 25
+
+            # Stable machine (slow degradation)
+            state["tool_wear"] += random.uniform(0.0003, 0.001)
+
+            # Occasional load spike
+            if random.random() < 0.015:
+                state["torque"] += random.uniform(3, 8)
+
+        # ======================================
+        # 🌡 GLOBAL TEMPERATURE MODEL
+        # ======================================
+
+        # small drift
+        state["temperature"] += random.uniform(-0.05, 0.2)
+
+        # stabilization (prevents runaway heat)
+        if state["temperature"] > 300:
+            state["temperature"] -= random.uniform(0.05, 0.15)
+
+        # ======================================
+        # 🔁 NATURAL RECOVERY (VERY IMPORTANT)
+        # ======================================
+
+        # vibration damping
+        if random.random() < 0.1:
+            state["vibration_index"] *= 0.98
+
+        # slight thermal recovery
+        if random.random() < 0.05:
+            state["temperature"] -= random.uniform(0.1, 0.3)
+
+        # ======================================
+        # LIMITS (PHYSICAL CONSTRAINTS)
+        # ======================================
+
+        state["tool_wear"] = clamp(state["tool_wear"], 0, 1)
+        state["vibration_index"] = clamp(state["vibration_index"], 0, 1)
+        state["temperature"] = clamp(state["temperature"], 290, 320)
+        state["torque"] = clamp(state["torque"], 35, 80)
+
+        # ======================================
+        # OUTPUT SNAPSHOT
+        # ======================================
 
         machines.append({
             "machine_id": machine_id,
-            "temperature": round(temperature, 2),
-            "torque": round(torque, 2),
-            "tool_wear": round(state["tool_wear"], 3),
-            "vibration_index": round(state["vibration_index"], 3),
-            "anomaly_score": round(state["anomaly_score"], 3),
+            "temperature": round(state["temperature"], 2),
+            "torque": round(state["torque"], 2),
+            "tool_wear": round(state["tool_wear"], 4),
+            "vibration_index": round(state["vibration_index"], 4)
         })
 
     return machines

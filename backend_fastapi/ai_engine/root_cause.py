@@ -1,27 +1,86 @@
 def analyze_root_cause(machine):
 
+    mid = machine["machine_id"]
+    temp = machine["temperature"]
+    vib = machine["vibration_index"]
+    wear = machine["tool_wear"]
+    torque = machine["torque"]
+
     causes = []
 
-    temperature = machine.get("temperature", 0)
-    vibration = machine.get("vibration_index", 0)
-    tool_wear = machine.get("tool_wear", 0)
-    torque = machine.get("torque", 0)
+    # ==========================================
+    # 🔥 GLOBAL FAILURE STAGES
+    # ==========================================
 
-    # 🔥 REAL INDUSTRIAL FAILURE TYPES
+    if wear > 0.85:
+        causes.append({
+            "issue": "Tool failure imminent",
+            "confidence": wear,
+            "reason": f"Tool wear {round(wear*100,1)}%"
+        })
 
-    if temperature > 85:
-        causes.append("Cooling system degradation (overheating risk)")
+    elif wear > 0.6:
+        causes.append({
+            "issue": "Tool degradation",
+            "confidence": wear,
+            "reason": "Wear increasing"
+        })
 
-    if vibration > 0.7:
-        causes.append("Bearing wear or spindle imbalance")
+    # ==========================================
+    # MACHINE SPECIFIC
+    # ==========================================
 
-    if tool_wear > 0.8:
-        causes.append("Cutting tool nearing failure → risk of poor surface finish")
+    if mid == "M_1":
+        if vib > 0.8:
+            causes.append({
+                "issue": "Bearing failure",
+                "confidence": vib,
+                "reason": "Severe vibration"
+            })
+        elif vib > 0.6:
+            causes.append({
+                "issue": "Spindle imbalance",
+                "confidence": vib,
+                "reason": "Moderate vibration"
+            })
 
-    if torque > 60:
-        causes.append("Mechanical overload → excessive cutting force")
+    elif mid == "M_2":
+        if temp > 305:
+            causes.append({
+                "issue": "Cooling failure",
+                "confidence": 0.9,
+                "reason": f"Temp {round(temp,1)}°C"
+            })
+        elif temp > 300:
+            causes.append({
+                "issue": "Heat buildup",
+                "confidence": 0.6,
+                "reason": "Friction rising"
+            })
+
+    elif mid == "M_3":
+        if torque > 55:
+            causes.append({
+                "issue": "Cutting overload",
+                "confidence": 0.9,
+                "reason": "High torque"
+            })
+        elif torque > 45:
+            causes.append({
+                "issue": "Cutting resistance",
+                "confidence": 0.6,
+                "reason": "Torque rising"
+            })
+
+    # ==========================================
+    # FALLBACK
+    # ==========================================
 
     if not causes:
-        causes.append("Machine operating within normal industrial parameters")
+        causes.append({
+            "issue": "Normal operation",
+            "confidence": 0.2,
+            "reason": "All parameters stable"
+        })
 
-    return causes
+    return sorted(causes, key=lambda x: x["confidence"], reverse=True)

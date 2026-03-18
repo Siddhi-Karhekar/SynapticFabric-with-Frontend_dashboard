@@ -23,12 +23,12 @@ class MachineAnalyzer:
             vibration = machine.get("vibration_index", 0)
 
             # =====================================
-            # ANOMALY SCORE
+            # 🧠 ANOMALY SCORE (SMOOTH + STABLE)
             # =====================================
 
             anomaly_score = (
-                ((temperature - 290) / 30) * 0.3 +
-                tool_wear * 0.35 +
+                ((temperature - 290) / 50) * 0.25 +
+                tool_wear * 0.4 +
                 vibration * 0.25 +
                 (torque / 100) * 0.1
             )
@@ -39,108 +39,94 @@ class MachineAnalyzer:
             machine["anomaly_score"] = anomaly_score
 
             # =====================================
-            # FAILURE PROBABILITY
+            # 🔮 FAILURE PROBABILITY (STABLE)
             # =====================================
 
             failure_probability = round(
-                anomaly_score * random.uniform(0.8, 1.1),
+                anomaly_score * random.uniform(0.9, 1.05),
                 3
             )
 
             failure_probability = min(failure_probability, 1)
 
             machine["failure_probability"] = failure_probability
-
-            # Frontend expects this
             machine["prediction"] = failure_probability
 
             # =====================================
-            # HEALTH STATUS
-            # =====================================
-
-            if anomaly_score < 0.45:
-                health_status = "Healthy"
-
-            elif anomaly_score < 0.75:
-                health_status = "Warning"
-
-            else:
-                health_status = "Critical"
-
-            machine["health_status"] = health_status
-
-            # =====================================
-            # ALERTS
+            # 🚨 ALERTS (PRIMARY DRIVER)
             # =====================================
 
             alerts = []
 
-            # Temperature alerts
+            # 🌡 TEMPERATURE
             if temperature > 300:
                 alerts.append({
-                    "level": "warning",
+                    "level": "WARNING",
                     "message": "Temperature rising above normal"
                 })
 
-            if temperature > 304:
+            if temperature > 305:
                 alerts.append({
-                    "level": "critical",
+                    "level": "CRITICAL",
                     "message": "Machine overheating risk"
                 })
 
-            # Vibration alerts
-            if vibration > 0.45:
+            # 📉 VIBRATION
+            if vibration > 0.6:
                 alerts.append({
-                    "level": "warning",
+                    "level": "WARNING",
                     "message": "Vibration levels increasing"
                 })
 
-            if vibration > 0.8:
+            if vibration > 0.85:
                 alerts.append({
-                    "level": "critical",
+                    "level": "CRITICAL",
                     "message": "Severe vibration detected"
                 })
 
-            # Tool wear alerts
-            if tool_wear > 0.35:
+            # 🛠 TOOL WEAR
+            if tool_wear > 0.6:
                 alerts.append({
-                    "level": "warning",
+                    "level": "WARNING",
                     "message": "Tool wear approaching limit"
                 })
 
-            if tool_wear > 0.7:
+            if tool_wear > 0.85:
                 alerts.append({
-                    "level": "critical",
-                    "message": "Tool wear near failure"
-                })
-
-            # AI health alerts
-            if anomaly_score > 0.45:
-                alerts.append({
-                    "level": "warning",
-                    "message": "Machine health degrading"
-                })
-
-            if anomaly_score > 0.75:
-                alerts.append({
-                    "level": "critical",
-                    "message": "Machine failure risk high"
+                    "level": "CRITICAL",
+                    "message": "Tool failure imminent"
                 })
 
             machine["alerts"] = alerts
 
             # =====================================
-            # AI EXPLANATION
+            # 🔥 HEALTH STATUS (ALERT-DRIVEN)
+            # =====================================
+
+            has_critical = any(a["level"] == "CRITICAL" for a in alerts)
+            has_warning = any(a["level"] == "WARNING" for a in alerts)
+
+            if has_critical:
+                health_status = "Critical"
+            elif has_warning:
+                health_status = "Warning"
+            else:
+                health_status = "Healthy"
+
+            machine["health_status"] = health_status
+
+            # =====================================
+            # 🤖 AI EXPLANATION
             # =====================================
 
             machine["ai_explanation"] = (
-                f"Machine health classified as {health_status}. "
-                f"Anomaly score {anomaly_score} with failure probability "
-                f"{failure_probability}."
+                f"Health: {health_status}. "
+                f"Anomaly score {anomaly_score}, "
+                f"Failure probability {failure_probability}."
             )
 
             # =====================================
-            # ROOT CAUSE ANALYSIS
+            # 🔍 ROOT CAUSE (SYNCED WITH STATE)
             # =====================================
 
             machine["root_cause"] = analyze_root_cause(machine)
@@ -150,4 +136,5 @@ class MachineAnalyzer:
         return analyzed
 
 
+# singleton
 machine_analyzer = MachineAnalyzer()
