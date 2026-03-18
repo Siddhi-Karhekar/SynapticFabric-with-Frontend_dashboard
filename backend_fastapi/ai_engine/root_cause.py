@@ -72,15 +72,6 @@ def analyze_root_cause(machine):
                 "reason": "Torque rising"
             })
 
-    # ==========================================
-    # FALLBACK
-    # ==========================================
-
-    if not causes:
-        causes.append({
-            "issue": "Normal operation",
-            "confidence": 0.2,
-            "reason": "All parameters stable"
-        })
+    # ❌ REMOVE FALLBACK (IMPORTANT)
 
     return sorted(causes, key=lambda x: x["confidence"], reverse=True)
