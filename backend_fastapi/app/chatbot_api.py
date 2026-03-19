@@ -1,100 +1,110 @@
 from fastapi import APIRouter, Body
-import asyncio
+import ollama
 
-from rag_assistant.rag_chain import generate_answer
-from vectordb.retrieve_context import get_machine_context
-from vectordb.semantic_retriever import retrieve_similar_context
-from digital_twin.twin_state import get_digital_twin_state
-from explainable_ai.explainer import generate_feature_explanation
-from edge_ai.rul_predictor import predict_rul
-
-# 🔍 NEW IMPORTS (safe addition)
 from digital_twin.simulator import MACHINE_MEMORY
-from backend_fastapi.ai_engine.root_cause import analyze_root_cause
+from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer
 
 router = APIRouter()
 
+
+# ==========================================
+# 🤖 CHAT ENDPOINT (LLM + SAFE HYBRID)
+# ==========================================
 
 @router.post("/chat")
 async def chat(payload: dict = Body(...)):
 
     query = payload.get("query", "")
+    print("📩 QUERY:", query)
 
     # ==========================================
-    # ⚡ PARALLEL CONTEXT COLLECTION
+    # 🔍 MACHINE ANALYSIS (ALWAYS WORKS)
     # ==========================================
 
-    live_task = asyncio.to_thread(get_machine_context)
-    rag_task = asyncio.to_thread(retrieve_similar_context, query)
-    twin_task = asyncio.to_thread(get_digital_twin_state)
-    explain_task = asyncio.to_thread(generate_feature_explanation)
+    try:
+        machines = []
 
-    tool_wear = 100
-    anomaly_score = 0.6
-    rul_task = asyncio.to_thread(predict_rul, tool_wear, anomaly_score)
+        for k, v in MACHINE_MEMORY.items():
+            machines.append({
+                "machine_id": k,
+                "temperature": v.get("temperature", 295),
+                "torque": v.get("torque", 40),
+                "tool_wear": v.get("tool_wear", 0.1),
+                "vibration_index": v.get("vibration_index", 0.2)
+            })
 
-    (
-        live_context,
-        historical_context,
-        twin_context,
-        explanation_context,
-        rul_context
-    ) = await asyncio.gather(
-        live_task,
-        rag_task,
-        twin_task,
-        explain_task,
-        rul_task
-    )
+        analyzed = machine_analyzer.analyze_machines(machines)
 
-    full_context = f"""
-CURRENT MACHINE STATE:
-{live_context}
+        highest = max(analyzed, key=lambda x: x["prediction"])
 
-DIGITAL TWIN PREDICTION:
-{twin_context}
+    except Exception as e:
+        print("❌ ANALYSIS ERROR:", e)
 
-SIMILAR PAST CONDITIONS:
-{historical_context}
+        highest = {
+            "machine_id": "M_1",
+            "prediction": 0.5,
+            "health_status": "Unknown"
+        }
 
-EXPLAINABLE AI ANALYSIS:
-{explanation_context}
+    # ==========================================
+    # 🧠 CONTEXT FOR LLM
+    # ==========================================
 
-RUL ESTIMATION:
-{rul_context}
+    context = f"""
+Machine ID: {highest['machine_id']}
+Failure Probability: {round(highest['prediction'] * 100)}%
+Health Status: {highest['health_status']}
+Temperature: {highest.get('temperature', 0)}
+Vibration: {highest.get('vibration_index', 0)}
+Tool Wear: {highest.get('tool_wear', 0)}
+Torque: {highest.get('torque', 0)}
 """
 
-    answer = generate_answer(full_context, query)
+    # ==========================================
+    # 🤖 LLM CALL (SAFE)
+    # ==========================================
 
-    return {
-        "answer": answer
-    }
+    try:
+        response = ollama.chat(
+            model="phi3:mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an industrial AI assistant for CNC machines."
+                },
+                {
+                    "role": "user",
+                    "content": f"""
+Answer briefly (1-2 sentences).
 
+{context}
 
-# ==========================================================
-# 🔍 NEW INSPECT ENDPOINT (SAFE ADDITION)
-# ==========================================================
-# ADD / REPLACE THIS PART
+Question: {query}
+"""
+                }
+            ],
+            options={
+                "temperature": 0.3
+            }
+        )
 
+        answer = response.get("message", {}).get("content", None)
 
+    except Exception as e:
+        print("❌ OLLAMA ERROR:", e)
+        answer = None
 
+    # ==========================================
+    # 🛡 FALLBACK (NEVER FAIL)
+    # ==========================================
 
-@router.post("/inspect")
-def inspect_machine(payload: dict = Body(...)):
+    if not answer:
+        answer = (
+            f"Machine {highest['machine_id']} has the highest failure risk "
+            f"({round(highest['prediction'] * 100)}%) and is in "
+            f"{highest['health_status']} state."
+        )
 
-    machine_id = payload.get("machine_id")
+    print("✅ FINAL ANSWER:", answer)
 
-    if not machine_id:
-        return {"error": "machine_id is required"}
-
-    if machine_id not in MACHINE_MEMORY:
-        return {"error": "Machine not found"}
-
-    machine = MACHINE_MEMORY[machine_id]
-
-    diagnosis = analyze_root_cause(machine)
-
-    return {
-        "machine_id": machine_id,
-        "diagnosis": diagnosis
-    }
+    return {"answer": answer}
