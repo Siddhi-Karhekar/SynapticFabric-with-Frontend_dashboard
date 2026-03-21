@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body
 import ollama
 
 from digital_twin.simulator import MACHINE_MEMORY
-from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer  # ✅ FIX
+from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer
 
 router = APIRouter()
 
@@ -30,7 +30,12 @@ async def chat(payload: dict = Body(...)):
             })
 
         analyzed = machine_analyzer.analyze_machines(machines)
-        highest = max(analyzed, key=lambda x: x["prediction"])
+
+        # ✅ SAFE MAX (avoid crash if missing prediction)
+        highest = max(
+            analyzed,
+            key=lambda x: x.get("prediction", x.get("anomaly_score", 0))
+        )
 
     except Exception as e:
         print("❌ ANALYSIS ERROR:", e)
@@ -41,7 +46,9 @@ async def chat(payload: dict = Body(...)):
             "health_status": "Unknown",
             "rul_cycles": 0,
             "rul_time": "unknown",
-            "root_cause": []
+            "root_cause": [],
+            "ai_reason": "Unavailable",
+            "shap": {}
         }
 
     # ==========================================
@@ -59,7 +66,20 @@ async def chat(payload: dict = Body(...)):
         root_cause_text = "No significant issues detected."
 
     # ==========================================
-    # 🧠 CONTEXT
+    # 🧠 SHAP EXPLANATION (NEW)
+    # ==========================================
+
+    shap_data = highest.get("shap", {})
+
+    if shap_data:
+        shap_text = ", ".join([
+            f"{k}:{round(v,3)}" for k, v in shap_data.items()
+        ])
+    else:
+        shap_text = "No SHAP data"
+
+    # ==========================================
+    # 🧠 CONTEXT (ENHANCED)
     # ==========================================
 
     context = f"""
@@ -78,6 +98,12 @@ Sensors:
 - Wear: {round(highest.get('tool_wear', 0)*100,1)}%
 - Torque: {round(highest.get('torque', 0), 2)}
 
+AI Insight:
+{highest.get("ai_reason", "N/A")}
+
+SHAP Contributions:
+{shap_text}
+
 Root Causes:
 {root_cause_text}
 """
@@ -92,7 +118,13 @@ Root Causes:
             messages=[
                 {
                     "role": "system",
-                    "content": "Industrial AI assistant. Answer briefly and explain root cause."
+                    "content": """You are an industrial AI assistant.
+
+Rules:
+- Answer in 1-2 sentences
+- Mention machine name
+- Explain root cause
+- Use AI insight if available"""
                 },
                 {
                     "role": "user",
@@ -109,7 +141,7 @@ Root Causes:
         answer = None
 
     # ==========================================
-    # 🛡 FALLBACK
+    # 🛡 FALLBACK (ENHANCED)
     # ==========================================
 
     if not answer:
@@ -117,7 +149,8 @@ Root Causes:
 
         answer = (
             f"{highest['machine_id']} has highest risk ({round(highest['prediction']*100)}%) "
-            f"due to {issue}. RUL: {highest.get('rul_cycles')} cycles."
+            f"due to {issue}. RUL: {highest.get('rul_cycles')} cycles. "
+            f"Primary factor: {highest.get('ai_reason', 'N/A')}."
         )
 
     print("✅ ANSWER:", answer)

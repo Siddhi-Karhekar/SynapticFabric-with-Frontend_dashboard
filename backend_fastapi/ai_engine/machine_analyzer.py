@@ -4,6 +4,10 @@ from backend_fastapi.ai_engine.root_cause import analyze_root_cause
 # ✅ ML MODEL
 from ml_models.failure_model import predict_failure
 
+# ✅ NEW
+from ml_models.explainer import explain_prediction
+from ml_models.anomaly_model import detect_anomaly
+
 
 class MachineAnalyzer:
 
@@ -19,7 +23,7 @@ class MachineAnalyzer:
             vibration = machine.get("vibration_index", 0)
 
             # =====================================
-            # 🧠 ANOMALY SCORE (BASE PHYSICS MODEL)
+            # 🧠 ANOMALY SCORE (PHYSICS BASE)
             # =====================================
 
             anomaly_score = (
@@ -35,7 +39,7 @@ class MachineAnalyzer:
             machine["anomaly_score"] = anomaly_score
 
             # =====================================
-            # 🔍 ROOT CAUSE ANALYSIS
+            # 🔍 ROOT CAUSE
             # =====================================
 
             try:
@@ -46,17 +50,12 @@ class MachineAnalyzer:
 
             machine["root_cause"] = root_causes
 
-            # =====================================
-            # 🔥 BOOST FROM ROOT CAUSE
-            # =====================================
-
+            # BOOST
             for cause in root_causes:
-                confidence = cause.get("confidence", 0)
-                anomaly_score += 0.2 * confidence
+                anomaly_score += 0.2 * cause.get("confidence", 0)
 
             anomaly_score = min(anomaly_score, 1)
             anomaly_score = round(anomaly_score, 3)
-
             machine["anomaly_score"] = anomaly_score
 
             # =====================================
@@ -80,22 +79,54 @@ class MachineAnalyzer:
             failure_probability = round(failure_probability, 3)
 
             machine["failure_probability"] = failure_probability
-
-            # ✅ CRITICAL FIX → ALWAYS SET prediction
-            machine["prediction"] = failure_probability
+            machine["prediction"] = failure_probability  # 🔥 CRITICAL FIX
 
             # =====================================
-            # ⏳ RUL ESTIMATION (CYCLES + TIME)
+            # 🧠 SHAP EXPLANATION
             # =====================================
 
             try:
-                rul_cycles = int((1 - failure_probability) * 150)
+                shap_values = explain_prediction(machine)
+                machine["shap"] = shap_values
 
-                # convert to time (assuming ~20 cycles/hour)
-                rul_time_hours = round(rul_cycles / 50, 1)
+                main_factor = max(shap_values, key=lambda k: abs(shap_values[k]))
+                machine["ai_reason"] = f"Primary factor: {main_factor}"
 
-                machine["rul_cycles"] = max(rul_cycles, 0)
-                machine["rul_time"] = f"{rul_time_hours} hrs"
+            except Exception as e:
+                print("❌ SHAP ERROR:", e)
+                machine["shap"] = {}
+                machine["ai_reason"] = "Explanation unavailable"
+
+            # =====================================
+            # 🤖 ANOMALY MODEL
+            # =====================================
+
+            try:
+                machine["anomaly_ml_score"] = detect_anomaly(machine)
+            except Exception as e:
+                print("❌ ANOMALY MODEL ERROR:", e)
+                machine["anomaly_ml_score"] = 0
+
+            # =====================================
+            # ⏳ ADVANCED RUL
+            # =====================================
+
+            try:
+                degradation_rate = (
+                    tool_wear * 0.6 +
+                    vibration * 0.3 +
+                    (temperature - 290) / 100 * 0.1
+                )
+
+                degradation_rate = max(0.01, degradation_rate)
+
+                rul_cycles = int((1 - failure_probability) / degradation_rate * 100)
+                rul_cycles = max(10, min(rul_cycles, 300))
+
+                rul_hours = round(rul_cycles / 50, 2)
+
+                machine["rul_cycles"] = rul_cycles
+                machine["rul_time"] = f"{rul_hours} hrs"
 
             except Exception as e:
                 print("❌ RUL ERROR:", e)
@@ -103,30 +134,26 @@ class MachineAnalyzer:
                 machine["rul_time"] = "unknown"
 
             # =====================================
-            # 🚨 ALERTS (STRICT)
+            # 🚨 ALERTS
             # =====================================
 
             alerts = []
 
             if temperature > 300:
                 alerts.append({"level": "WARNING", "message": "High temperature"})
-
             if temperature > 305:
                 alerts.append({"level": "CRITICAL", "message": "Overheating risk"})
 
             if vibration > 0.6:
                 alerts.append({"level": "WARNING", "message": "High vibration"})
-
             if vibration > 0.85:
                 alerts.append({"level": "CRITICAL", "message": "Severe vibration"})
 
             if tool_wear > 0.6:
                 alerts.append({"level": "WARNING", "message": "Tool wear high"})
-
             if tool_wear > 0.85:
                 alerts.append({"level": "CRITICAL", "message": "Tool failure imminent"})
 
-            # ROOT CAUSE ALERTS
             for cause in root_causes:
                 if cause.get("confidence", 0) > 0.5:
                     alerts.append({
@@ -137,7 +164,7 @@ class MachineAnalyzer:
             machine["alerts"] = alerts
 
             # =====================================
-            # 🟢 HEALTH STATUS
+            # 🟢 HEALTH
             # =====================================
 
             if any(a["level"] == "CRITICAL" for a in alerts):
@@ -149,17 +176,9 @@ class MachineAnalyzer:
 
             machine["health_status"] = health_status
 
-            # =====================================
-            # 🧠 AI EXPLANATION
-            # =====================================
-
             machine["ai_explanation"] = (
                 f"{health_status} | anomaly={anomaly_score} | risk={failure_probability}"
             )
-
-            # =====================================
-            # 🛡 FINAL SAFETY (NEVER BREAK SYSTEM)
-            # =====================================
 
             if "prediction" not in machine:
                 machine["prediction"] = anomaly_score
