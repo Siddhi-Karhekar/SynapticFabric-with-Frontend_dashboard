@@ -1,16 +1,12 @@
 def analyze_root_cause(machine):
 
-    mid = machine["machine_id"]
-    temp = machine["temperature"]
-    vib = machine["vibration_index"]
-    wear = machine["tool_wear"]
-    torque = machine["torque"]
+    mid = machine.get("machine_id", "Unknown")
+    temp = machine.get("temperature", 0)
+    vib = machine.get("vibration_index", 0)
+    wear = machine.get("tool_wear", 0)
+    torque = machine.get("torque", 0)
 
     causes = []
-
-    # ==========================================
-    # 🔥 GLOBAL FAILURE STAGES
-    # ==========================================
 
     if wear > 0.85:
         causes.append({
@@ -25,10 +21,6 @@ def analyze_root_cause(machine):
             "confidence": wear,
             "reason": "Wear increasing"
         })
-
-    # ==========================================
-    # MACHINE SPECIFIC
-    # ==========================================
 
     if mid == "M_1":
         if vib > 0.8:
@@ -72,6 +64,11 @@ def analyze_root_cause(machine):
                 "reason": "Torque rising"
             })
 
-    # ❌ REMOVE FALLBACK (IMPORTANT)
+    if not causes:
+        causes.append({
+            "issue": "Normal operation",
+            "confidence": 0.2,
+            "reason": "Stable parameters"
+        })
 
     return sorted(causes, key=lambda x: x["confidence"], reverse=True)

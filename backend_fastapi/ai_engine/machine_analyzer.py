@@ -1,6 +1,9 @@
 import random
 from backend_fastapi.ai_engine.root_cause import analyze_root_cause
 
+# ✅ ML MODEL
+from ml_models.failure_model import predict_failure
+
 
 class MachineAnalyzer:
 
@@ -16,7 +19,7 @@ class MachineAnalyzer:
             vibration = machine.get("vibration_index", 0)
 
             # =====================================
-            # 🧠 ANOMALY SCORE
+            # 🧠 ANOMALY SCORE (BASE PHYSICS MODEL)
             # =====================================
 
             anomaly_score = (
@@ -27,16 +30,24 @@ class MachineAnalyzer:
             )
 
             anomaly_score = max(0, min(anomaly_score, 1))
+            anomaly_score = round(anomaly_score, 3)
+
+            machine["anomaly_score"] = anomaly_score
 
             # =====================================
-            # 🔍 ROOT CAUSE
+            # 🔍 ROOT CAUSE ANALYSIS
             # =====================================
 
-            root_causes = analyze_root_cause(machine)
+            try:
+                root_causes = analyze_root_cause(machine)
+            except Exception as e:
+                print("❌ ROOT CAUSE ERROR:", e)
+                root_causes = []
+
             machine["root_cause"] = root_causes
 
             # =====================================
-            # BOOST FROM ROOT CAUSE
+            # 🔥 BOOST FROM ROOT CAUSE
             # =====================================
 
             for cause in root_causes:
@@ -49,22 +60,53 @@ class MachineAnalyzer:
             machine["anomaly_score"] = anomaly_score
 
             # =====================================
-            # 🔮 FAILURE PROBABILITY
+            # 🔮 FAILURE PROBABILITY (ML FIRST)
             # =====================================
 
-            failure_probability = anomaly_score * random.uniform(0.95, 1.05)
-            failure_probability = min(failure_probability, 1)
+            try:
+                failure_probability = predict_failure(machine)
 
-            machine["failure_probability"] = round(failure_probability, 3)
-            machine["prediction"] = machine["failure_probability"]
+                print(
+                    f"[ML OK] {machine['machine_id']} | "
+                    f"Anomaly={anomaly_score} | ML={failure_probability}"
+                )
+
+            except Exception as e:
+                print("[ML FAILED]", e)
+
+                failure_probability = anomaly_score * random.uniform(0.95, 1.05)
+                failure_probability = min(failure_probability, 1)
+
+            failure_probability = round(failure_probability, 3)
+
+            machine["failure_probability"] = failure_probability
+
+            # ✅ CRITICAL FIX → ALWAYS SET prediction
+            machine["prediction"] = failure_probability
+
+            # =====================================
+            # ⏳ RUL ESTIMATION (CYCLES + TIME)
+            # =====================================
+
+            try:
+                rul_cycles = int((1 - failure_probability) * 150)
+
+                # convert to time (assuming ~20 cycles/hour)
+                rul_time_hours = round(rul_cycles / 50, 1)
+
+                machine["rul_cycles"] = max(rul_cycles, 0)
+                machine["rul_time"] = f"{rul_time_hours} hrs"
+
+            except Exception as e:
+                print("❌ RUL ERROR:", e)
+                machine["rul_cycles"] = 0
+                machine["rul_time"] = "unknown"
 
             # =====================================
             # 🚨 ALERTS (STRICT)
             # =====================================
 
             alerts = []
-
-            # Only trigger alerts ABOVE SAFE ZONE
 
             if temperature > 300:
                 alerts.append({"level": "WARNING", "message": "High temperature"})
@@ -84,9 +126,9 @@ class MachineAnalyzer:
             if tool_wear > 0.85:
                 alerts.append({"level": "CRITICAL", "message": "Tool failure imminent"})
 
-            # ✅ ADD ROOT CAUSE ONLY IF REAL ISSUE
+            # ROOT CAUSE ALERTS
             for cause in root_causes:
-                if cause["confidence"] > 0.5:
+                if cause.get("confidence", 0) > 0.5:
                     alerts.append({
                         "level": "CRITICAL" if cause["confidence"] > 0.75 else "WARNING",
                         "message": cause["issue"]
@@ -95,7 +137,7 @@ class MachineAnalyzer:
             machine["alerts"] = alerts
 
             # =====================================
-            # 🟢 HEALTH STATUS (STRICT)
+            # 🟢 HEALTH STATUS
             # =====================================
 
             if any(a["level"] == "CRITICAL" for a in alerts):
@@ -107,9 +149,20 @@ class MachineAnalyzer:
 
             machine["health_status"] = health_status
 
+            # =====================================
+            # 🧠 AI EXPLANATION
+            # =====================================
+
             machine["ai_explanation"] = (
                 f"{health_status} | anomaly={anomaly_score} | risk={failure_probability}"
             )
+
+            # =====================================
+            # 🛡 FINAL SAFETY (NEVER BREAK SYSTEM)
+            # =====================================
+
+            if "prediction" not in machine:
+                machine["prediction"] = anomaly_score
 
             analyzed.append(machine)
 

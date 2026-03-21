@@ -2,14 +2,10 @@ from fastapi import APIRouter, Body
 import ollama
 
 from digital_twin.simulator import MACHINE_MEMORY
-from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer
+from backend_fastapi.ai_engine.machine_analyzer import machine_analyzer  # ✅ FIX
 
 router = APIRouter()
 
-
-# ==========================================
-# 🤖 CHAT ENDPOINT (LLM + SAFE HYBRID)
-# ==========================================
 
 @router.post("/chat")
 async def chat(payload: dict = Body(...)):
@@ -18,7 +14,7 @@ async def chat(payload: dict = Body(...)):
     print("📩 QUERY:", query)
 
     # ==========================================
-    # 🔍 MACHINE ANALYSIS (ALWAYS WORKS)
+    # 🔍 MACHINE ANALYSIS
     # ==========================================
 
     try:
@@ -34,7 +30,6 @@ async def chat(payload: dict = Body(...)):
             })
 
         analyzed = machine_analyzer.analyze_machines(machines)
-
         highest = max(analyzed, key=lambda x: x["prediction"])
 
     except Exception as e:
@@ -43,25 +38,52 @@ async def chat(payload: dict = Body(...)):
         highest = {
             "machine_id": "M_1",
             "prediction": 0.5,
-            "health_status": "Unknown"
+            "health_status": "Unknown",
+            "rul_cycles": 0,
+            "rul_time": "unknown",
+            "root_cause": []
         }
 
     # ==========================================
-    # 🧠 CONTEXT FOR LLM
+    # 🔍 ROOT CAUSE
+    # ==========================================
+
+    root_causes = highest.get("root_cause", [])
+
+    if root_causes:
+        root_cause_text = "\n".join([
+            f"- {c.get('issue')} ({round(c.get('confidence', 0)*100)}%)"
+            for c in root_causes if c.get("confidence", 0) > 0.3
+        ])
+    else:
+        root_cause_text = "No significant issues detected."
+
+    # ==========================================
+    # 🧠 CONTEXT
     # ==========================================
 
     context = f"""
-Machine ID: {highest['machine_id']}
-Failure Probability: {round(highest['prediction'] * 100)}%
-Health Status: {highest['health_status']}
-Temperature: {highest.get('temperature', 0)}
-Vibration: {highest.get('vibration_index', 0)}
-Tool Wear: {highest.get('tool_wear', 0)}
-Torque: {highest.get('torque', 0)}
+Machine ID: {highest.get('machine_id')}
+
+Health: {highest.get('health_status')}
+Failure Risk: {round(highest.get('prediction', 0) * 100)}%
+
+RUL:
+- Cycles: {highest.get('rul_cycles')}
+- Time: {highest.get('rul_time')}
+
+Sensors:
+- Temp: {round(highest.get('temperature', 0), 2)} °C
+- Vibration: {round(highest.get('vibration_index', 0), 3)}
+- Wear: {round(highest.get('tool_wear', 0)*100,1)}%
+- Torque: {round(highest.get('torque', 0), 2)}
+
+Root Causes:
+{root_cause_text}
 """
 
     # ==========================================
-    # 🤖 LLM CALL (SAFE)
+    # 🤖 LLM
     # ==========================================
 
     try:
@@ -70,41 +92,34 @@ Torque: {highest.get('torque', 0)}
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an industrial AI assistant for CNC machines."
+                    "content": "Industrial AI assistant. Answer briefly and explain root cause."
                 },
                 {
                     "role": "user",
-                    "content": f"""
-Answer briefly (1-2 sentences).
-
-{context}
-
-Question: {query}
-"""
+                    "content": f"{context}\n\nQuestion: {query}"
                 }
             ],
-            options={
-                "temperature": 0.3
-            }
+            options={"temperature": 0.3}
         )
 
-        answer = response.get("message", {}).get("content", None)
+        answer = response.get("message", {}).get("content")
 
     except Exception as e:
         print("❌ OLLAMA ERROR:", e)
         answer = None
 
     # ==========================================
-    # 🛡 FALLBACK (NEVER FAIL)
+    # 🛡 FALLBACK
     # ==========================================
 
     if not answer:
+        issue = root_causes[0]["issue"] if root_causes else "unknown issue"
+
         answer = (
-            f"Machine {highest['machine_id']} has the highest failure risk "
-            f"({round(highest['prediction'] * 100)}%) and is in "
-            f"{highest['health_status']} state."
+            f"{highest['machine_id']} has highest risk ({round(highest['prediction']*100)}%) "
+            f"due to {issue}. RUL: {highest.get('rul_cycles')} cycles."
         )
 
-    print("✅ FINAL ANSWER:", answer)
+    print("✅ ANSWER:", answer)
 
     return {"answer": answer}
